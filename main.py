@@ -30,7 +30,7 @@ def get_aws_credentials():
         return {
             'aws_access_key_id': os.environ['AWS_ACCESS_KEY_ID'],
             'aws_secret_access_key': os.environ['AWS_SECRET_ACCESS_KEY'],
-            'region_name': os.environ.get('AWS_REGION', 'us-east-1')
+            'region_name': os.environ.get('AWS_REGION', 'ap-south-1')
         }
     return None
 
