@@ -38,6 +38,29 @@ def get_aws_credentials():
 def create_password(username):
     return f"{username}@encode2025"
 
+# Function to get sign-in URL
+def get_custom_signin_url(iam_client):
+    try:
+        # Try to get account alias first
+        response = iam_client.list_account_aliases()
+        aliases = response.get('AccountAliases', [])
+        
+        if aliases:
+            # Use the first alias if available
+            return f"https://{aliases[0]}.signin.aws.amazon.com/console"
+        else:
+            # If no alias, get the account ID
+            sts_client = boto3.client('sts',
+                              aws_access_key_id=iam_client._serialize_handler.access_key,
+                              aws_secret_access_key=iam_client._serialize_handler.secret_key,
+                              region_name=iam_client.meta.region_name)
+            
+            account_id = sts_client.get_caller_identity()["Account"]
+            return f"https://{account_id}.signin.aws.amazon.com/console"
+    except Exception as e:
+        st.warning(f"Could not determine custom sign-in URL: {str(e)}. Using default sign-in URL.")
+        return "https://signin.aws.amazon.com/console"
+
 # Function to create IAM user
 def create_iam_user(username, group_name="AWS_Participants"):
     try:
@@ -56,24 +79,34 @@ def create_iam_user(username, group_name="AWS_Participants"):
         iam.create_login_profile(UserName=username, Password=password, PasswordResetRequired=False)
         iam.add_user_to_group(GroupName=group_name, UserName=username)
         
+        # Get custom sign-in URL
+        signin_url = get_custom_signin_url(iam)
+        
         return {
             "success": True,
             "username": username,
             "password": password,
             "arn": response['User']['Arn'],
-            "console_url": "https://console.aws.amazon.com/"
+            "console_url": "https://console.aws.amazon.com/",
+            "signin_url": signin_url
         }
     except ClientError as e:
         return {"success": False, "error": str(e)}
 
 # Function to create credentials text
-def create_credentials_text(username, password, arn):
+def create_credentials_text(username, password, arn, signin_url):
     return f"""AWS WORKSHOP CREDENTIALS
 ------------------------
 Username: {username}
 Password: {password}
 ARN: {arn}
 Console URL: https://console.aws.amazon.com/
+Sign-in URL: {signin_url}
+
+Instructions:
+1. Go to the Sign-in URL above
+2. Enter the Username and Password
+3. You don't need to enter an account ID
 """
 
 # Function to create and return a temporary file
@@ -114,8 +147,15 @@ if st.session_state.success_message:
         st.write(f"Password: {result['password']}")
         st.write(f"ARN: {result['arn']}")
         st.write(f"Console URL: {result['console_url']}")
+        st.write(f"Sign-in URL: {result['signin_url']}")
+        st.write("**Note:** Use the Sign-in URL for direct access without entering an account ID")
         
-        credentials_text = create_credentials_text(result['username'], result['password'], result['arn'])
+        credentials_text = create_credentials_text(
+            result['username'], 
+            result['password'], 
+            result['arn'],
+            result['signin_url']
+        )
         
         # Create temporary file
         filename = f"{result['username']}_credentials.txt"
